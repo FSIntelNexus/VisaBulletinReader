@@ -5,6 +5,9 @@ for the specified visa type and country.
 
 from flask import Flask, render_template, request
 from visabulletinreader import get_visa_options, read_bulletin_section, init_reader
+from helpers.logging_config import setup_logging
+
+logger = setup_logging(__name__)
 
 app = Flask(__name__)
 
@@ -58,7 +61,7 @@ def get_bulletin():
     bulletin_url, title = init_reader()
     visa_types, visa_countries = get_visa_options()
     visa_dates = read_bulletin_section(bulletin_url, visa_type, visa_country)
-    print(visa_dates)
+    logger.info("\n%s", visa_dates)
     return render_template('index.html',
                            bulletin_url=bulletin_url,
                            bulletin_src=title,

@@ -12,6 +12,9 @@ from bs4 import BeautifulSoup
 from pandas import DataFrame
 
 from helpers.timed_cache import timed_lru_cache
+from helpers.logging_config import setup_logging
+
+logger = setup_logging(__name__)
 
 config = configparser.ConfigParser()
 # config.read(os.path.join("src", "config.ini"))
@@ -35,8 +38,6 @@ def init_reader() -> tuple:
     """
     current_year = datetime.now().year
     current_month = datetime.now().strftime("%B")
-    print(f"Current Year: {current_year} - Current Month: {current_month} "
-          f"| Required format: {current_month}-{current_year}")
     bulletin_url_base = config["SEARCH"]["BASE_URL_DOMAIN"] + config["SEARCH"]["BASE_URL"]
     bulletin_url, title = process_bulletin_url(bulletin_url_base)
     return bulletin_url, title
@@ -54,9 +55,9 @@ def main():
         "(INDIA|MEXICO|PHILIPPINES|CHINA|OTHERS): ")
     visa_dates = read_bulletin_section(bulletin_url, visa_type, visa_country)
     if visa_dates is not None:
-        print(visa_dates)
+        logger.info(visa_dates)
     else:
-        print(f"No data found for the {visa_type} visa type of '{visa_country}' country")
+        logger.info(f"No data found for the {visa_type} visa type of '{visa_country}' country")
 
 @timed_lru_cache(seconds=3600, maxsize=32)
 def read_page(url: str):
@@ -90,7 +91,7 @@ def get_bulletin_month_url(page: BeautifulSoup, search_text: str) -> tuple:
     if h2_tag:
         hyperlink = h2_tag.find_next('a') if h2_tag.find_next('a').has_attr('href') else None
         if hyperlink is not None:
-            print("Adjacent Hyperlink found:", hyperlink['href'], "hyperlink text:", hyperlink.text)
+            logger.info("Adjacent Hyperlink found: %s hyperlink text: %s", hyperlink['href'], hyperlink.text)
             return hyperlink['href'], hyperlink.text
     return "", ""
 
@@ -105,19 +106,20 @@ def process_bulletin_url(base_url: str):
     Returns:
         str: The processed bulletin URL.
     """
+    logger.info("Processing base URL: %s", base_url)
     primary_page = read_page(base_url)
     href_to_bulletin = ""
     link_name = None
     if "Upcoming Visa Bulletin" in primary_page.text:
-        print("Found 'Upcoming Visa Bulletin'")
+        logger.info("Found 'Upcoming Visa Bulletin'")
         href_to_bulletin, link_name = get_bulletin_month_url(primary_page, "Upcoming Visa Bulletin")
 
     if href_to_bulletin is None or href_to_bulletin == "":
-        print("Upcoming Visa Bulletin not found")
+        logger.info("Upcoming Visa Bulletin not found")
         href_to_bulletin, link_name = get_bulletin_month_url(primary_page, "Current Visa Bulletin")
 
     href_to_bulletin = config["SEARCH"]["BASE_URL_DOMAIN"] + href_to_bulletin
-    print("Bulletin URL:", href_to_bulletin, "Title: ", link_name)
+    logger.info("Bulletin URL: %s Title: %s", href_to_bulletin, link_name)
     return href_to_bulletin, link_name
 
 
@@ -186,9 +188,6 @@ def get_table_data(page: BeautifulSoup, search_text: str, visa_country: str) -> 
         visa_col_name_t1 = find_col(t1data)
         visa_col_name_t2 = find_col(t2data)
 
-    # print('visa_col_name_t1:', visa_col_name_t1, 'visa_col_name_t2:',
-    #       visa_col_name_t2, 'visa_country:', visa_country, 't1data:\n', t1data, '\n---\n')
-
     final_result = t1data.iloc[:, [0]].copy()
     final_result.insert(1, "Dates For Filing Visa Applications",
                         t2data[visa_col_name_t2])
@@ -200,7 +199,7 @@ def get_table_data(page: BeautifulSoup, search_text: str, visa_country: str) -> 
     for col in date_cols:
         final_result[col] = final_result[col].apply(_format_date_string)
 
-    print(final_result)
+    logger.info("\n%s", final_result)
     return final_result
 
 
@@ -217,19 +216,19 @@ def read_bulletin_section(bulletin_url: str, visa_type: str, visa_country: str) 
     Returns:
         DataFrame | None: The extracted visa dates or None if not found.
     """
-    print(f'Fetching visa dates for country: {visa_country} '
-          f'| Type: {visa_type} '
-          f'| Bulletin URL: {bulletin_url}')
+    logger.info('Fetching visa dates for country: %s | Type: %s | Bulletin URL: %s',
+                visa_country, visa_type, bulletin_url)
     bulletin_page = read_page(bulletin_url)
+    logger.info("Bulletin Page Read\n%s", bulletin_page.prettify())
     search_text = "Family-" if visa_type.upper() == "FAMILY" else "Employment-"
     # read the family-based statuses
     df_visa_dates = get_table_data(bulletin_page, search_text, visa_country)
 
     if df_visa_dates is not None:
-        print(f"{search_text} Dates found for {visa_country}")
+        logger.info("%s Dates found for %s", search_text, visa_country)
         return df_visa_dates
 
-    print(f"{search_text} Dates not found for {visa_country}")
+    logger.info("%s Dates not found for %s", search_text, visa_country)
     return None
 
 
